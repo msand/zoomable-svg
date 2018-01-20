@@ -104,15 +104,24 @@ export default class ZoomableSvg extends Component {
   }
 
   componentWillMount() {
+    const noop = () => {};
+    const yes = () => true;
+    const moveThreshold = this.props.moveThreshold || 5;
+    const shouldRespond = (evt, { dx, dy }) => {
+      return (
+        evt.nativeEvent.touches.length === 2 ||
+        dx * dx + dy * dy >= moveThreshold
+      );
+    };
     this._panResponder = PanResponder.create({
-      onPanResponderGrant: () => {},
-      onPanResponderTerminate: () => {},
-      onMoveShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponder: () => true,
-      onShouldBlockNativeResponder: () => true,
-      onPanResponderTerminationRequest: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: noop,
+      onPanResponderTerminate: noop,
+      onShouldBlockNativeResponder: yes,
+      onPanResponderTerminationRequest: yes,
+      onMoveShouldSetPanResponder: shouldRespond,
+      onStartShouldSetPanResponder: shouldRespond,
+      onMoveShouldSetPanResponderCapture: shouldRespond,
+      onStartShouldSetPanResponderCapture: shouldRespond,
       onPanResponderMove: evt => {
         const touches = evt.nativeEvent.touches;
         const length = touches.length;
