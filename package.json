@@ -1,0 +1,14 @@
+{
+  "name": "zoomable-svg",
+  "version": "1.0.0",
+  "description": "Pinch to pan-n-zoom react-native-svg components using a render prop.",
+  "main": "index.js",
+  "repository": "https://github.com/msand/zoomable-svg",
+  "author": "msand@abo.fi",
+  "license": "MIT",
+  "private": false,
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
