@@ -156,6 +156,8 @@ export default class ZoomableSvg extends Component {
       align,
       viewBoxSize,
       svgRoot: Child,
+      xalign = align,
+      yalign = align,
       meetOrSlice = 'meet',
       vbWidth = viewBoxSize,
       vbHeight = viewBoxSize,
@@ -165,10 +167,7 @@ export default class ZoomableSvg extends Component {
     const minDimension = Math.min(height, width);
     const maxDimension = Math.max(height, width);
 
-    let { xalign = align, yalign = align } = this.props;
-
     const isSlicing = meetOrSlice === 'slice';
-
     const slicing = isSlicing ? -1 : 1;
 
     const xresolution = vbWidth / minDimension;
