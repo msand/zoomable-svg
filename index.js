@@ -21,6 +21,7 @@ function calcCenter(x1, y1, x2, y2) {
 
 function getAlignment(align) {
   switch (align) {
+    case 'min':
     case 'start':
       return 0;
 
@@ -28,6 +29,7 @@ function getAlignment(align) {
     case 'mid':
       return 1;
 
+    case 'max':
     case 'end':
       return 2;
   }
@@ -134,7 +136,7 @@ export default class ZoomableSvg extends Component {
             touch1.locationX,
             touch1.locationY,
             touch2.locationX,
-            touch2.locationY,
+            touch2.locationY
           );
         }
       },
@@ -148,20 +150,57 @@ export default class ZoomableSvg extends Component {
   }
 
   render() {
-    const { height, width, align, svgRoot: Child, viewBoxSize } = this.props;
-    const minDimension = Math.min(height, width);
-    const resolution = viewBoxSize / minDimension;
+    const {
+      height,
+      width,
+      align,
+      viewBoxSize,
+      svgRoot: Child,
+      meetOrSlice = 'meet',
+      vbWidth = viewBoxSize,
+      vbHeight = viewBoxSize,
+    } = this.props;
     const { left, top, zoom } = this.state;
-    const alignmentAmount = getAlignment(align);
-    const offsetX = alignmentAmount * zoom * (width - minDimension) / 2;
-    const offsetY = alignmentAmount * zoom * (height - minDimension) / 2;
+
+    const minDimension = Math.min(height, width);
+    const maxDimension = Math.max(height, width);
+
+    let { xalign = align, yalign = align } = this.props;
+
+    const isSlicing = meetOrSlice === 'slice';
+    if (isSlicing) {
+      if (width > height) {
+        xalign = 'start';
+        yalign = 'mid';
+      } else {
+        xalign = 'mid';
+        yalign = 'start';
+      }
+    }
+
+    const slicing = isSlicing ? -1 : 1;
+
+    const xresolution = vbWidth / minDimension;
+    const yresolution = vbHeight / minDimension;
+
+    const xalignmentAmount = slicing * getAlignment(xalign);
+    const yalignmentAmount = slicing * getAlignment(yalign);
+
+    const sliceScale = isSlicing ? maxDimension / minDimension : 1;
+
+    const diffX = isSlicing ? maxDimension - width : width - minDimension;
+    const diffY = isSlicing ? maxDimension - height : height - minDimension;
+
+    const offsetX = xalignmentAmount * zoom * diffX / 2;
+    const offsetY = yalignmentAmount * zoom * diffY / 2;
+
     return (
       <View {...this._panResponder.panHandlers}>
         <Child
           transform={{
-            translateX: (left + offsetX) * resolution,
-            translateY: (top + offsetY) * resolution,
-            scale: zoom,
+            translateX: (left + offsetX) * xresolution,
+            translateY: (top + offsetY) * yresolution,
+            scale: zoom * sliceScale,
           }}
         />
       </View>
