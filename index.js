@@ -168,15 +168,6 @@ export default class ZoomableSvg extends Component {
     let { xalign = align, yalign = align } = this.props;
 
     const isSlicing = meetOrSlice === 'slice';
-    if (isSlicing) {
-      if (width > height) {
-        xalign = 'start';
-        yalign = 'mid';
-      } else {
-        xalign = 'mid';
-        yalign = 'start';
-      }
-    }
 
     const slicing = isSlicing ? -1 : 1;
 
