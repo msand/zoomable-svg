@@ -282,8 +282,8 @@ export default class ZoomableSvg extends Component {
       <View {...this._panResponder.panHandlers}>
         <Child
           transform={{
-            translateX: left + translateX,
-            translateY: top + translateY,
+            translateX: left + zoom * translateX,
+            translateY: top + zoom * translateY,
             scaleX: zoom * scaleX,
             scaleY: zoom * scaleY,
           }}
