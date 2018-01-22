@@ -23,24 +23,141 @@ function getAlignment(align) {
   switch (align) {
     case 'min':
     case 'start':
-      return 0;
+      return 'xMinYMin';
 
-    default:
     case 'mid':
-      return 1;
+      return 'xMidYMid';
 
     case 'max':
     case 'end':
-      return 2;
+      return 'xMaxYMax';
+
+    default:
+      return align || 'xMidYMid';
   }
 }
 
+const MOS_MEET = 0;
+const MOS_SLICE = 1;
+const MOS_NONE = 2;
+
+const meetOrSliceMap = {
+  meet: MOS_MEET,
+  slice: MOS_SLICE,
+  none: MOS_NONE,
+};
+
+function getTransform(vbRect, eRect, align, meetOrSlice) {
+  // based on https://svgwg.org/svg2-draft/coords.html#ComputingAViewportsTransform
+
+  // Let vb-x, vb-y, vb-width, vb-height be the min-x, min-y, width and height values of the viewBox attribute respectively.
+  const vbX = vbRect.left || 0;
+  const vbY = vbRect.top || 0;
+  const vbWidth = vbRect.width;
+  const vbHeight = vbRect.height;
+
+  // Let e-x, e-y, e-width, e-height be the position and size of the element respectively.
+  const eX = eRect.left || 0;
+  const eY = eRect.top || 0;
+  const eWidth = eRect.width;
+  const eHeight = eRect.height;
+
+  // Initialize scale-x to e-width/vb-width.
+  let scaleX = eWidth / vbWidth;
+
+  // Initialize scale-y to e-height/vb-height.
+  let scaleY = eHeight / vbHeight;
+
+  // Initialize translate-x to e-x - (vb-x * scale-x).
+  // Initialize translate-y to e-y - (vb-y * scale-y).
+  let translateX = eX - vbX * scaleX;
+  let translateY = eY - vbY * scaleY;
+
+  // If align is 'none'
+  if (meetOrSlice == MOS_NONE) {
+    // Let scale be set the smaller value of scale-x and scale-y.
+    // Assign scale-x and scale-y to scale.
+    const scale = (scaleX = scaleY = Math.min(scaleX, scaleY));
+
+    // If scale is greater than 1
+    if (scale > 1) {
+      // Minus translateX by (eWidth / scale - vbWidth) / 2
+      // Minus translateY by (eHeight / scale - vbHeight) / 2
+      translateX -= (eWidth / scale - vbWidth) / 2;
+      translateY -= (eHeight / scale - vbHeight) / 2;
+    } else {
+      translateX -= (eWidth - vbWidth * scale) / 2;
+      translateY -= (eHeight - vbHeight * scale) / 2;
+    }
+  } else {
+    // If align is not 'none' and meetOrSlice is 'meet', set the larger of scale-x and scale-y to the smaller.
+    // Otherwise, if align is not 'none' and meetOrSlice is 'slice', set the smaller of scale-x and scale-y to the larger.
+
+    if (align !== 'none' && meetOrSlice == MOS_MEET) {
+      scaleX = scaleY = Math.min(scaleX, scaleY);
+    } else if (align !== 'none' && meetOrSlice == MOS_SLICE) {
+      scaleX = scaleY = Math.max(scaleX, scaleY);
+    }
+
+    // If align contains 'xMid', add (e-width - vb-width * scale-x) / 2 to translate-x.
+    if (align.includes('xMid')) {
+      translateX += (eWidth - vbWidth * scaleX) / 2;
+    }
+
+    // If align contains 'xMax', add (e-width - vb-width * scale-x) to translate-x.
+    if (align.includes('xMax')) {
+      translateX += eWidth - vbWidth * scaleX;
+    }
+
+    // If align contains 'yMid', add (e-height - vb-height * scale-y) / 2 to translate-y.
+    if (align.includes('YMid')) {
+      translateY += (eHeight - vbHeight * scaleY) / 2;
+    }
+
+    // If align contains 'yMax', add (e-height - vb-height * scale-y) to translate-y.
+    if (align.includes('YMax')) {
+      translateY += eHeight - vbHeight * scaleY;
+    }
+  }
+
+  // The transform applied to content contained by the element is given by
+  // translate(translate-x, translate-y) scale(scale-x, scale-y).
+  return { translateX, translateY, scaleX, scaleY };
+}
+
+function getStateFromProps(props) {
+  const {
+    align,
+    width,
+    height,
+    vbWidth,
+    vbHeight,
+    meetOrSlice = 'meet',
+    eRect = { width, height },
+    vbRect = { width: vbWidth, height: vbHeight },
+  } = props;
+  return getTransform(
+    vbRect,
+    eRect,
+    getAlignment(align),
+    meetOrSliceMap[meetOrSlice]
+  );
+}
+
 export default class ZoomableSvg extends Component {
-  state = {
-    zoom: 1,
-    left: 0,
-    top: 0,
-  };
+  constructor(props) {
+    super(props);
+    this.state = {
+      zoom: 1,
+      left: 0,
+      top: 0,
+      ...getStateFromProps(props),
+    };
+  }
+
+  componentWillReceiveProps(nextProps) {
+    this.setState(getStateFromProps(nextProps));
+  }
 
   processPinch(x1, y1, x2, y2) {
     const distance = calcDistance(x1, y1, x2, y2);
@@ -150,47 +267,25 @@ export default class ZoomableSvg extends Component {
   }
 
   render() {
+    const { svgRoot: Child } = this.props;
     const {
-      height,
-      width,
-      align,
-      viewBoxSize,
-      svgRoot: Child,
-      xalign = align,
-      yalign = align,
-      meetOrSlice = 'meet',
-      vbWidth = viewBoxSize,
-      vbHeight = viewBoxSize,
-    } = this.props;
-    const { left, top, zoom } = this.state;
-
-    const minDimension = Math.min(height, width);
-    const maxDimension = Math.max(height, width);
-
-    const isSlicing = meetOrSlice === 'slice';
-    const slicing = isSlicing ? -1 : 1;
-
-    const xresolution = vbWidth / minDimension;
-    const yresolution = vbHeight / minDimension;
-
-    const xalignmentAmount = slicing * getAlignment(xalign);
-    const yalignmentAmount = slicing * getAlignment(yalign);
-
-    const sliceScale = isSlicing ? maxDimension / minDimension : 1;
-
-    const diffX = isSlicing ? maxDimension - width : width - minDimension;
-    const diffY = isSlicing ? maxDimension - height : height - minDimension;
-
-    const offsetX = xalignmentAmount * zoom * diffX / 2;
-    const offsetY = yalignmentAmount * zoom * diffY / 2;
+      left,
+      top,
+      zoom,
+      scaleX,
+      scaleY,
+      translateX,
+      translateY,
+    } = this.state;
 
     return (
       <View {...this._panResponder.panHandlers}>
         <Child
           transform={{
-            translateX: (left + offsetX) * xresolution,
-            translateY: (top + offsetY) * yresolution,
-            scale: zoom * sliceScale,
+            translateX: left + translateX,
+            translateY: top + translateY,
+            scaleX: zoom * scaleX,
+            scaleY: zoom * scaleY,
           }}
         />
       </View>

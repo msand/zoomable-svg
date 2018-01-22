@@ -1,7 +1,7 @@
 # ZoomableSvg
 Pinch to pan-n-zoom react-native-svg components using a render prop.
 
-[Example](https://snack.expo.io/@msand/zoomablesvg-render-prop-press-handler)
+[Example](https://snack.expo.io/@msand/zoomablesvg-v2)
 
 ```jsx harmony
 import React, { Component } from 'react';
@@ -19,19 +19,17 @@ export default class App extends Component {
     return (
       <View style={styles.container}>
         <ZoomableSvg
-          xalign="mid"
-          yalign="mid"
+          align="xMidYMid"
           vbWidth={65}
           vbHeight={65}
           width={width}
           height={height}
-          meetOrSlice="meet"
+          meetOrSlice="slice"
           svgRoot={({ transform }) => (
             <Svg
               width={width}
               height={height}
-              viewBox="0 0 65 65"
-              preserveAspectRatio="xMinYMin meet">
+            >
               <G transform={transform}>
                 <Rect x="0" y="0" width="65" height="65" fill="white" />
                 <Circle cx="32" cy="32" r="4.167" fill="blue" />
