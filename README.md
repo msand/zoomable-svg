@@ -1,7 +1,7 @@
 # ZoomableSvg
 Pinch to pan-n-zoom react-native-svg components using a render prop.
 
-[Example](https://snack.expo.io/@msand/zoomablesvg-v2)
+[Example](https://snack.expo.io/@msand/zoomablesvg-v2.0.1)
 
 ```jsx harmony
 import React, { Component } from 'react';
