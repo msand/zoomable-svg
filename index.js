@@ -241,19 +241,18 @@ export default class ZoomableSvg extends Component {
       onStartShouldSetPanResponder: shouldRespond,
       onMoveShouldSetPanResponderCapture: shouldRespond,
       onStartShouldSetPanResponderCapture: shouldRespond,
-      onPanResponderMove: evt => {
-        const touches = evt.nativeEvent.touches;
-        const length = touches.length;
+      onPanResponderMove: ({ nativeEvent: { touches } }) => {
+        const { length } = touches;
         if (length === 1) {
-          const [{ locationX, locationY }] = touches;
-          this.processTouch(locationX, locationY);
+          const [{ pageX, pageY }] = touches;
+          this.processTouch(pageX, pageY);
         } else if (length === 2) {
           const [touch1, touch2] = touches;
           this.processPinch(
-            touch1.locationX,
-            touch1.locationY,
-            touch2.locationX,
-            touch2.locationY
+            touch1.pageX,
+            touch1.pageY,
+            touch2.pageX,
+            touch2.pageY
           );
         }
       },
