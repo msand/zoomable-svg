@@ -74,7 +74,7 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
   let translateY = eY - vbY * scaleY;
 
   // If align is 'none'
-  if (meetOrSlice == MOS_NONE) {
+  if (meetOrSlice === MOS_NONE) {
     // Let scale be set the smaller value of scale-x and scale-y.
     // Assign scale-x and scale-y to scale.
     const scale = (scaleX = scaleY = Math.min(scaleX, scaleY));
@@ -93,9 +93,9 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
     // If align is not 'none' and meetOrSlice is 'meet', set the larger of scale-x and scale-y to the smaller.
     // Otherwise, if align is not 'none' and meetOrSlice is 'slice', set the smaller of scale-x and scale-y to the larger.
 
-    if (align !== 'none' && meetOrSlice == MOS_MEET) {
+    if (align !== 'none' && meetOrSlice === MOS_MEET) {
       scaleX = scaleY = Math.min(scaleX, scaleY);
-    } else if (align !== 'none' && meetOrSlice == MOS_SLICE) {
+    } else if (align !== 'none' && meetOrSlice === MOS_SLICE) {
       scaleX = scaleY = Math.max(scaleX, scaleY);
     }
 
@@ -122,11 +122,14 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
 
   // The transform applied to content contained by the element is given by
   // translate(translate-x, translate-y) scale(scale-x, scale-y).
-  return { translateX, translateY, scaleX, scaleY };
+  return { translateX, translateY, scaleX, scaleY, eRect };
 }
 
-function getStateFromProps(props) {
+function getNextState(props, state) {
   const {
+    top,
+    left,
+    zoom,
     align,
     width,
     height,
@@ -134,29 +137,115 @@ function getStateFromProps(props) {
     vbHeight,
     meetOrSlice = 'meet',
     eRect = { width, height },
-    vbRect = { width: vbWidth, height: vbHeight },
+    vbRect = { width: vbWidth || width, height: vbHeight || height },
   } = props;
-  return getTransform(
-    vbRect,
-    eRect,
-    getAlignment(align),
-    meetOrSliceMap[meetOrSlice]
-  );
+  const { top: currTop, left: currLeft, zoom: currZoom } = state;
+  return {
+    top: top || currTop,
+    left: left || currLeft,
+    zoom: zoom || currZoom,
+    ...getTransform(
+      vbRect,
+      eRect,
+      getAlignment(align),
+      meetOrSliceMap[meetOrSlice],
+    ),
+  };
+}
+
+function getZoomTransform({
+  left,
+  top,
+  zoom,
+  scaleX,
+  scaleY,
+  translateX,
+  translateY,
+}) {
+  return {
+    translateX: left + zoom * translateX,
+    translateY: top + zoom * translateY,
+    scaleX: zoom * scaleX,
+    scaleY: zoom * scaleY,
+  };
 }
 
 export default class ZoomableSvg extends Component {
   constructor(props) {
-    super(props);
-    this.state = {
+    super();
+    this.state = getNextState(props, {
       zoom: 1,
       left: 0,
       top: 0,
-      ...getStateFromProps(props),
-    };
+    });
   }
 
   componentWillReceiveProps(nextProps) {
-    this.setState(getStateFromProps(nextProps));
+    this.setState(getNextState(nextProps, this.state));
+  }
+
+  constrainExtent({ zoom, left, top }) {
+    const {
+      constrain: {
+        scaleExtent: [minZoom, maxZoom] = [0, Infinity],
+        translateExtent: [min, max] = [
+          [-Infinity, -Infinity],
+          [Infinity, Infinity],
+        ],
+      },
+    } = this.props;
+
+    const constrainedZoom = Math.max(minZoom, Math.min(maxZoom, zoom));
+
+    const { translateX, translateY, scaleX, scaleY } = getZoomTransform({
+      ...this.state,
+      zoom: constrainedZoom,
+      left,
+      top,
+    });
+
+    // Width and height of canvas in native device
+    const { eRect: { width, height } } = this.state;
+
+    // Requested top left corner, width and height in root coordinates
+    const vl = -translateX / scaleX;
+    const vt = -translateY / scaleY;
+
+    const vw = width / scaleX;
+    const vh = height / scaleY;
+
+    // Constraints
+    const [minX, minY] = min;
+    const [maxX, maxY] = max;
+
+    // Extent of constraints
+    const ew = maxX - minX;
+    const eh = maxY - minY;
+
+    // Amount of free space when zoomed out beyond a translateExtent
+    const fx = Math.max(0, vw - ew);
+    const fy = Math.max(0, vh - eh);
+
+    // Correction of top-left corner
+    const dx0 = Math.max(vl, minX - fx);
+    const dy0 = Math.max(vt, minY - fy);
+
+    // Correction of bottom-right corner
+    const dx1 = Math.min(vl, maxX - vw + fx);
+    const dy1 = Math.min(vt, maxY - vh + fy);
+
+    // Handle zooming out beyond translateExtent (if scaleExtent allows it)
+    const x =
+      dx1 > dx0 ? (dx0 + dx1) / 2 : Math.min(0, dx0) || Math.max(0, dx1);
+    const y =
+      dy1 > dy0 ? (dy0 + dy1) / 2 : Math.min(0, dy0) || Math.max(0, dy1);
+
+    // Return corrected transform
+    return {
+      zoom: constrainedZoom,
+      left: left + (vl - x) * scaleX,
+      top: top + (vt - y) * scaleY,
+    };
   }
 
   processPinch(x1, y1, x2, y2) {
@@ -183,6 +272,7 @@ export default class ZoomableSvg extends Component {
         initialZoom,
         initialDistance,
       } = this.state;
+      const { constrain } = this.props;
 
       const touchZoom = distance / initialDistance;
       const dx = x - initialX;
@@ -192,11 +282,13 @@ export default class ZoomableSvg extends Component {
       const top = (initialTop + dy - y) * touchZoom + y;
       const zoom = initialZoom * touchZoom;
 
-      this.setState({
+      const nextState = {
         zoom,
         left,
         top,
-      });
+      };
+
+      this.setState(constrain ? this.constrainExtent(nextState) : nextState);
     }
   }
 
@@ -212,13 +304,19 @@ export default class ZoomableSvg extends Component {
         initialY: y,
       });
     } else {
-      const { initialX, initialY, initialLeft, initialTop } = this.state;
+      const { initialX, initialY, initialLeft, initialTop, zoom } = this.state;
+      const { constrain } = this.props;
+
       const dx = x - initialX;
       const dy = y - initialY;
-      this.setState({
+
+      const nextState = {
         left: initialLeft + dx,
         top: initialTop + dy,
-      });
+        zoom,
+      };
+
+      this.setState(constrain ? this.constrainExtent(nextState) : nextState);
     }
   }
 
@@ -267,26 +365,9 @@ export default class ZoomableSvg extends Component {
 
   render() {
     const { svgRoot: Child } = this.props;
-    const {
-      left,
-      top,
-      zoom,
-      scaleX,
-      scaleY,
-      translateX,
-      translateY,
-    } = this.state;
-
     return (
       <View {...this._panResponder.panHandlers}>
-        <Child
-          transform={{
-            translateX: left + zoom * translateX,
-            translateY: top + zoom * translateY,
-            scaleX: zoom * scaleX,
-            scaleY: zoom * scaleY,
-          }}
-        />
+        <Child transform={getZoomTransform(this.state)} />
       </View>
     );
   }
