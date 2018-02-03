@@ -364,10 +364,10 @@ export default class ZoomableSvg extends Component {
   }
 
   render() {
-    const { svgRoot: Child } = this.props;
+    const { svgRoot: Child, childProps } = this.props;
     return (
       <View {...this._panResponder.panHandlers}>
-        <Child transform={getZoomTransform(this.state)} />
+        <Child transform={getZoomTransform(this.state)} {...childProps} />
       </View>
     );
   }
