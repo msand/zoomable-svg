@@ -37,16 +37,6 @@ function getAlignment(align) {
   }
 }
 
-const MOS_MEET = 0;
-const MOS_SLICE = 1;
-const MOS_NONE = 2;
-
-const meetOrSliceMap = {
-  meet: MOS_MEET,
-  slice: MOS_SLICE,
-  none: MOS_NONE,
-};
-
 function getTransform(vbRect, eRect, align, meetOrSlice) {
   // based on https://svgwg.org/svg2-draft/coords.html#ComputingAViewportsTransform
 
@@ -74,7 +64,7 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
   let translateY = eY - vbY * scaleY;
 
   // If align is 'none'
-  if (meetOrSlice === MOS_NONE) {
+  if (align === 'none') {
     // Let scale be set the smaller value of scale-x and scale-y.
     // Assign scale-x and scale-y to scale.
     const scale = (scaleX = scaleY = Math.min(scaleX, scaleY));
@@ -93,9 +83,9 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
     // If align is not 'none' and meetOrSlice is 'meet', set the larger of scale-x and scale-y to the smaller.
     // Otherwise, if align is not 'none' and meetOrSlice is 'slice', set the smaller of scale-x and scale-y to the larger.
 
-    if (align !== 'none' && meetOrSlice === MOS_MEET) {
+    if (align !== 'none' && meetOrSlice === 'meet') {
       scaleX = scaleY = Math.min(scaleX, scaleY);
-    } else if (align !== 'none' && meetOrSlice === MOS_SLICE) {
+    } else if (align !== 'none' && meetOrSlice === 'slice') {
       scaleX = scaleY = Math.max(scaleX, scaleY);
     }
 
@@ -125,6 +115,88 @@ function getTransform(vbRect, eRect, align, meetOrSlice) {
   return { translateX, translateY, scaleX, scaleY, eRect };
 }
 
+function getConstraints(props, viewBox) {
+  const { constrain } = props;
+  if (!constrain) {
+    return null;
+  }
+
+  // Constraints
+  const {
+    combine = 'dynamic',
+    scaleExtent = [0, Infinity],
+    translateExtent = [[-Infinity, -Infinity], [Infinity, Infinity]],
+  } = constrain;
+
+  const [minZoom = 0, maxZoom = Infinity] = scaleExtent;
+
+  const [
+    min = [-Infinity, -Infinity],
+    max = [Infinity, Infinity],
+  ] = translateExtent;
+
+  const [minX = -Infinity, minY = -Infinity] = min;
+  const [maxX = Infinity, maxY = Infinity] = max;
+
+  // Extent of constraints
+  const ew = maxX - minX;
+  const eh = maxY - minY;
+
+  const { scaleX, scaleY, eRect: { width, height } } = viewBox;
+
+  // Size of canvas in viewbox
+  const vw = width / scaleX;
+  const vh = height / scaleY;
+
+  switch (combine) {
+    default:
+    case 'dynamic': {
+      return {
+        dynamic: [ew, eh],
+        scaleExtent: [minZoom, maxZoom],
+        translateExtent: [[minX, minY], [maxX, maxY]],
+      };
+    }
+    case 'static': {
+      return {
+        dynamic: null,
+        scaleExtent: [minZoom, maxZoom],
+        translateExtent: [[minX, minY], [maxX, maxY]],
+      };
+    }
+    case 'union': {
+      // Max extent (at minZoom)
+      const maxW = vw / minZoom;
+      const maxH = vh / minZoom;
+
+      // Amount of free space when zoomed out beyond a translateExtent
+      const fx = Math.max(0, maxW - ew);
+      const fy = Math.max(0, maxH - eh);
+
+      // Union of constraints
+      return {
+        dynamic: null,
+        scaleExtent: [minZoom, maxZoom],
+        translateExtent: [[minX - fx, minY - fy], [maxX + fx, maxY + fy]],
+      };
+    }
+    case 'intersect': {
+      // Zoom which shows entire extent
+      const wZoom = vw / ew;
+      const hZoom = vh / eh;
+
+      // Intersection of constraints
+      const minAllowedZoom = Math.max(wZoom, hZoom, minZoom);
+
+      return {
+        dynamic: null,
+        scaleExtent: [minAllowedZoom, maxZoom],
+        translateExtent: [[minX, minY], [maxX, maxY]],
+      };
+    }
+  }
+}
+
 function getNextState(props, state) {
   const {
     top,
@@ -140,16 +212,13 @@ function getNextState(props, state) {
     vbRect = { width: vbWidth || width, height: vbHeight || height },
   } = props;
   const { top: currTop, left: currLeft, zoom: currZoom } = state;
+  const viewBox = getTransform(vbRect, eRect, getAlignment(align), meetOrSlice);
   return {
+    constraints: getConstraints(props, viewBox),
     top: top || currTop,
     left: left || currLeft,
     zoom: zoom || currZoom,
-    ...getTransform(
-      vbRect,
-      eRect,
-      getAlignment(align),
-      meetOrSliceMap[meetOrSlice],
-    ),
+    ...viewBox,
   };
 }
 
@@ -185,15 +254,16 @@ export default class ZoomableSvg extends Component {
   }
 
   constrainExtent({ zoom, left, top }) {
+    // Based on https://github.com/d3/d3-zoom/blob/3bd2bddd87d79bb5fc3984cfb59e36ebd1686dcf/src/zoom.js
+    // Width and height of canvas in native device
     const {
-      constrain: {
-        scaleExtent: [minZoom, maxZoom] = [0, Infinity],
-        translateExtent: [min, max] = [
-          [-Infinity, -Infinity],
-          [Infinity, Infinity],
-        ],
+      eRect: { width, height },
+      constraints: {
+        dynamic,
+        scaleExtent: [minZoom, maxZoom],
+        translateExtent: [min, max],
       },
-    } = this.props;
+    } = this.state;
 
     const constrainedZoom = Math.max(minZoom, Math.min(maxZoom, zoom));
 
@@ -204,9 +274,6 @@ export default class ZoomableSvg extends Component {
       top,
     });
 
-    // Width and height of canvas in native device
-    const { eRect: { width, height } } = this.state;
-
     // Requested top left corner, width and height in root coordinates
     const vl = -translateX / scaleX;
     const vt = -translateY / scaleY;
@@ -215,24 +282,31 @@ export default class ZoomableSvg extends Component {
     const vh = height / scaleY;
 
     // Constraints
-    const [minX, minY] = min;
-    const [maxX, maxY] = max;
+    let [minX, minY] = min;
+    let [maxX, maxY] = max;
 
-    // Extent of constraints
-    const ew = maxX - minX;
-    const eh = maxY - minY;
+    if (dynamic) {
+      // Extent of constraints
+      const [ew, eh] = dynamic;
 
-    // Amount of free space when zoomed out beyond a translateExtent
-    const fx = Math.max(0, vw - ew);
-    const fy = Math.max(0, vh - eh);
+      // Amount of free space when zoomed out beyond a translateExtent
+      const fx = Math.max(0, vw - ew);
+      const fy = Math.max(0, vh - eh);
+
+      minX -= fx;
+      minY -= fy;
+
+      maxX += fx;
+      maxY += fy;
+    }
 
     // Correction of top-left corner
-    const dx0 = Math.max(vl, minX - fx);
-    const dy0 = Math.max(vt, minY - fy);
+    const dx0 = Math.max(vl, minX);
+    const dy0 = Math.max(vt, minY);
 
     // Correction of bottom-right corner
-    const dx1 = Math.min(vl, maxX - vw + fx);
-    const dy1 = Math.min(vt, maxY - vh + fy);
+    const dx1 = Math.min(vl, maxX - vw);
+    const dy1 = Math.min(vt, maxY - vh);
 
     // Handle zooming out beyond translateExtent (if scaleExtent allows it)
     const x =
@@ -350,7 +424,7 @@ export default class ZoomableSvg extends Component {
             touch1.pageX,
             touch1.pageY,
             touch2.pageX,
-            touch2.pageY
+            touch2.pageY,
           );
         }
       },
