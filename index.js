@@ -243,9 +243,9 @@ export default class ZoomableSvg extends Component {
   constructor(props) {
     super();
     this.state = getNextState(props, {
-      zoom: 1,
-      left: 0,
-      top: 0,
+      zoom: props.initialZoom || 1,
+      left: props.initialLeft || 0,
+      top: props.initialTop || 0,
     });
   }
 
@@ -397,13 +397,15 @@ export default class ZoomableSvg extends Component {
   componentWillMount() {
     const noop = () => {};
     const yes = () => true;
-    const moveThreshold = this.props.moveThreshold || 5;
+    const { moveThreshold = 5, doubleTapThreshold } = this.props;
     const shouldRespond = (evt, { dx, dy }) => {
       return (
         evt.nativeEvent.touches.length === 2 ||
-        dx * dx + dy * dy >= moveThreshold
+        dx * dx + dy * dy >= moveThreshold ||
+        doubleTapThreshold
       );
     };
+    let lastRelease = 0;
     this._panResponder = PanResponder.create({
       onPanResponderGrant: noop,
       onPanResponderTerminate: noop,
@@ -428,7 +430,34 @@ export default class ZoomableSvg extends Component {
           );
         }
       },
-      onPanResponderRelease: () => {
+      onPanResponderRelease: ({ nativeEvent: { timestamp } }, { x0, y0 }) => {
+        const { doubleTapThreshold } = this.props;
+        if (
+          doubleTapThreshold &&
+          timestamp - lastRelease < doubleTapThreshold
+        ) {
+          const {
+            top: initialTop,
+            left: initialLeft,
+            zoom: initialZoom,
+          } = this.state;
+          const { constrain, doubleTapZoom = 2 } = this.props;
+
+          const left = (initialLeft - x0) * doubleTapZoom + x0;
+          const top = (initialTop - y0) * doubleTapZoom + y0;
+          const zoom = initialZoom * doubleTapZoom;
+
+          const nextState = {
+            zoom,
+            left,
+            top,
+          };
+
+          this.setState(
+            constrain ? this.constrainExtent(nextState) : nextState
+          );
+        }
+        lastRelease = timestamp;
         this.setState({
           isZooming: false,
           isMoving: false,

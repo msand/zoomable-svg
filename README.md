@@ -132,7 +132,11 @@ export default class App extends Component {
           vbHeight={100}
           width={width}
           height={height}
-          meetOrSlice="slice"
+          initialTop={-20}
+          initialLeft={-50}
+          initialZoom={1.2}
+          doubleTapThreshold={300}
+          meetOrSlice="meet"
           svgRoot={SvgRoot}
           childProps={this.childProps}
           constrain={constrain ? constraints : null}
