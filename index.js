@@ -397,9 +397,9 @@ export default class ZoomableSvg extends Component {
   componentWillMount() {
     const noop = () => {};
     const yes = () => true;
-    const { moveThreshold = 5, doubleTapThreshold } = this.props;
     const shouldRespond = (evt, { dx, dy }) => {
-      return (
+      const { moveThreshold = 5, doubleTapThreshold, lock } = this.props;
+      return !lock && (
         evt.nativeEvent.touches.length === 2 ||
         dx * dx + dy * dy >= moveThreshold ||
         doubleTapThreshold
