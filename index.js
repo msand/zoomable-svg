@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { View, PanResponder } from 'react-native';
+import { View, PanResponder, Platform } from 'react-native';
 // Based on https://gist.github.com/evgen3188/db996abf89e2105c35091a3807b7311d
 
 function calcDistance(x1, y1, x2, y2) {
@@ -197,7 +197,7 @@ function getConstraints(props, viewBox) {
   }
 }
 
-function getNextState(props, state) {
+function getDerivedStateFromProps(props, state) {
   const {
     top,
     left,
@@ -240,17 +240,74 @@ function getZoomTransform({
 }
 
 export default class ZoomableSvg extends Component {
+  static getDerivedStateFromProps = getDerivedStateFromProps;
   constructor(props) {
     super();
-    this.state = getNextState(props, {
+    this.state = getDerivedStateFromProps(props, {
       zoom: props.initialZoom || 1,
       left: props.initialLeft || 0,
       top: props.initialTop || 0,
     });
-  }
-
-  componentWillReceiveProps(nextProps) {
-    this.setState(getNextState(nextProps, this.state));
+    const noop = () => {};
+    const yes = () => true;
+    const shouldRespond = (evt, { dx, dy }) => {
+      const { moveThreshold = 5, doubleTapThreshold, lock } = this.props;
+      return (
+        !lock &&
+        (evt.nativeEvent.touches.length === 2 ||
+          dx * dx + dy * dy >= moveThreshold ||
+          doubleTapThreshold)
+      );
+    };
+    let lastRelease = 0;
+    const checkDoubleTap = (timestamp, x, y, shift) => {
+      const { doubleTapThreshold, doubleTapZoom = 2 } = this.props;
+      if (doubleTapThreshold && timestamp - lastRelease < doubleTapThreshold) {
+        this.zoomBy(shift ? 1 / doubleTapZoom : doubleTapZoom, x, y);
+      }
+      lastRelease = timestamp;
+    };
+    this.onMouseUp = ({
+                        clientX,
+                        clientY,
+                        nativeEvent: { timeStamp, shiftKey },
+                      }) => {
+      checkDoubleTap(timeStamp, clientX, clientY, shiftKey);
+    };
+    this._panResponder = PanResponder.create({
+      onPanResponderGrant: noop,
+      onPanResponderTerminate: noop,
+      onShouldBlockNativeResponder: yes,
+      onPanResponderTerminationRequest: yes,
+      onMoveShouldSetPanResponder: shouldRespond,
+      onStartShouldSetPanResponder: shouldRespond,
+      onMoveShouldSetPanResponderCapture: shouldRespond,
+      onStartShouldSetPanResponderCapture: shouldRespond,
+      onPanResponderMove: ({ nativeEvent: { touches } }) => {
+        const { length } = touches;
+        if (length === 1) {
+          const [{ pageX, pageY }] = touches;
+          this.processTouch(pageX, pageY);
+        } else if (length === 2) {
+          const [touch1, touch2] = touches;
+          this.processPinch(
+            touch1.pageX,
+            touch1.pageY,
+            touch2.pageX,
+            touch2.pageY,
+          );
+        }
+      },
+      onPanResponderRelease: ({ nativeEvent: { timestamp } }, { x0, y0 }) => {
+        if (Platform.OS !== 'web') {
+          checkDoubleTap(timestamp, x0, y0);
+        }
+        this.setState({
+          isZooming: false,
+          isMoving: false,
+        });
+      },
+    });
   }
 
   constrainExtent({ zoom, left, top }) {
@@ -394,82 +451,52 @@ export default class ZoomableSvg extends Component {
     }
   }
 
-  componentWillMount() {
-    const noop = () => {};
-    const yes = () => true;
-    const shouldRespond = (evt, { dx, dy }) => {
-      const { moveThreshold = 5, doubleTapThreshold, lock } = this.props;
-      return !lock && (
-        evt.nativeEvent.touches.length === 2 ||
-        dx * dx + dy * dy >= moveThreshold ||
-        doubleTapThreshold
-      );
+  zoomBy(dz, x, y) {
+    const {
+      top: initialTop,
+      left: initialLeft,
+      zoom: initialZoom,
+    } = this.state;
+    const { constrain } = this.props;
+
+    const left = (initialLeft - x) * dz + x;
+    const top = (initialTop - y) * dz + y;
+    const zoom = initialZoom * dz;
+
+    const nextState = {
+      zoom,
+      left,
+      top,
     };
-    let lastRelease = 0;
-    this._panResponder = PanResponder.create({
-      onPanResponderGrant: noop,
-      onPanResponderTerminate: noop,
-      onShouldBlockNativeResponder: yes,
-      onPanResponderTerminationRequest: yes,
-      onMoveShouldSetPanResponder: shouldRespond,
-      onStartShouldSetPanResponder: shouldRespond,
-      onMoveShouldSetPanResponderCapture: shouldRespond,
-      onStartShouldSetPanResponderCapture: shouldRespond,
-      onPanResponderMove: ({ nativeEvent: { touches } }) => {
-        const { length } = touches;
-        if (length === 1) {
-          const [{ pageX, pageY }] = touches;
-          this.processTouch(pageX, pageY);
-        } else if (length === 2) {
-          const [touch1, touch2] = touches;
-          this.processPinch(
-            touch1.pageX,
-            touch1.pageY,
-            touch2.pageX,
-            touch2.pageY,
-          );
-        }
-      },
-      onPanResponderRelease: ({ nativeEvent: { timestamp } }, { x0, y0 }) => {
-        const { doubleTapThreshold } = this.props;
-        if (
-          doubleTapThreshold &&
-          timestamp - lastRelease < doubleTapThreshold
-        ) {
-          const {
-            top: initialTop,
-            left: initialLeft,
-            zoom: initialZoom,
-          } = this.state;
-          const { constrain, doubleTapZoom = 2 } = this.props;
 
-          const left = (initialLeft - x0) * doubleTapZoom + x0;
-          const top = (initialTop - y0) * doubleTapZoom + y0;
-          const zoom = initialZoom * doubleTapZoom;
-
-          const nextState = {
-            zoom,
-            left,
-            top,
-          };
-
-          this.setState(
-            constrain ? this.constrainExtent(nextState) : nextState
-          );
-        }
-        lastRelease = timestamp;
-        this.setState({
-          isZooming: false,
-          isMoving: false,
-        });
-      },
-    });
+    this.setState(constrain ? this.constrainExtent(nextState) : nextState);
   }
 
+  onWheel = ({ clientX, clientY, deltaY }) => {
+    const { wheelZoom = 1.2 } = this.props;
+    const zoomAmount = deltaY > 0 ? wheelZoom : 1 / wheelZoom;
+    this.zoomBy(zoomAmount, clientX, clientY);
+  };
+
+  reset = (zoom = 1, left = 0, top = 0) => {
+    const nextState = {
+      zoom,
+      left,
+      top,
+    };
+
+    this.setState(this.props.constrain ? this.constrainExtent(nextState) : nextState);
+  };
+
   render() {
-    const { svgRoot: Child, childProps } = this.props;
+    const { svgRoot: Child, childProps, style } = this.props;
     return (
-      <View {...this._panResponder.panHandlers}>
+      <View
+        {...this._panResponder.panHandlers}
+        onMouseUp={this.onMouseUp}
+        onWheel={this.onWheel}
+        style={style}
+      >
         <Child transform={getZoomTransform(this.state)} {...childProps} />
       </View>
     );
