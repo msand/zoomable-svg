@@ -472,7 +472,9 @@ export default class ZoomableSvg extends Component {
     this.setState(constrain ? this.constrainExtent(nextState) : nextState);
   }
 
-  onWheel = ({ clientX, clientY, deltaY }) => {
+  onWheel = (e) => {
+    e.preventDefault();
+    const { clientX, clientY, deltaY } = e;
     const { wheelZoom = 1.2 } = this.props;
     const zoomAmount = deltaY > 0 ? wheelZoom : 1 / wheelZoom;
     this.zoomBy(zoomAmount, clientX, clientY);
