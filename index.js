@@ -283,7 +283,8 @@ export default class ZoomableSvg extends Component {
       onStartShouldSetPanResponder: shouldRespond,
       onMoveShouldSetPanResponderCapture: shouldRespond,
       onStartShouldSetPanResponderCapture: shouldRespond,
-      onPanResponderMove: ({ nativeEvent: { touches } }) => {
+      onPanResponderMove: (e) => {
+        const { nativeEvent: { touches } } = e;
         const { length } = touches;
         if (length === 1) {
           const [{ pageX, pageY }] = touches;
@@ -296,7 +297,10 @@ export default class ZoomableSvg extends Component {
             touch2.pageX,
             touch2.pageY,
           );
+        } else {
+          return;
         }
+        e.preventDefault();
       },
       onPanResponderRelease: ({ nativeEvent: { timestamp } }, { x0, y0 }) => {
         if (Platform.OS !== 'web') {
