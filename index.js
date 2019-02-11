@@ -1,5 +1,20 @@
-import React, { Component } from 'react';
-import { View, PanResponder, Platform } from 'react-native';
+const React = require('react');
+let RN;
+try {
+  RN = require('react-native');
+  if (RN.Platform.OS === 'web') {
+    RN = require('react-native-web');
+  }
+} catch (e) {
+  RN = require('react-native-web');
+}
+if (!RN) {
+  throw new Error('failed to import react-native(-web)');
+}
+
+const { View, PanResponder, Platform } = RN;
+const { Component } = React;
+
 // Based on https://gist.github.com/evgen3188/db996abf89e2105c35091a3807b7311d
 
 function calcDistance(x1, y1, x2, y2) {
@@ -239,8 +254,7 @@ function getZoomTransform({
   };
 }
 
-export default class ZoomableSvg extends Component {
-  static getDerivedStateFromProps = getDerivedStateFromProps;
+class ZoomableSvg extends Component {
   constructor(props) {
     super();
     this.state = getDerivedStateFromProps(props, {
@@ -268,10 +282,10 @@ export default class ZoomableSvg extends Component {
       lastRelease = timestamp;
     };
     this.onMouseUp = ({
-                        clientX,
-                        clientY,
-                        nativeEvent: { timeStamp, shiftKey },
-                      }) => {
+      clientX,
+      clientY,
+      nativeEvent: { timeStamp, shiftKey },
+    }) => {
       checkDoubleTap(timeStamp, clientX, clientY, shiftKey);
     };
     this._panResponder = PanResponder.create({
@@ -283,7 +297,7 @@ export default class ZoomableSvg extends Component {
       onStartShouldSetPanResponder: shouldRespond,
       onMoveShouldSetPanResponderCapture: shouldRespond,
       onStartShouldSetPanResponderCapture: shouldRespond,
-      onPanResponderMove: (e) => {
+      onPanResponderMove: e => {
         const { nativeEvent: { touches } } = e;
         const { length } = touches;
         if (length === 1) {
@@ -312,6 +326,26 @@ export default class ZoomableSvg extends Component {
         });
       },
     });
+
+    this.onWheel = e => {
+      e.preventDefault();
+      const { clientX, clientY, deltaY } = e;
+      const { wheelZoom = 1.2 } = this.props;
+      const zoomAmount = deltaY > 0 ? wheelZoom : 1 / wheelZoom;
+      this.zoomBy(zoomAmount, clientX, clientY);
+    };
+
+    this.reset = (zoom = 1, left = 0, top = 0) => {
+      const nextState = {
+        zoom,
+        left,
+        top,
+      };
+
+      this.setState(
+        this.props.constrain ? this.constrainExtent(nextState) : nextState,
+      );
+    };
   }
 
   constrainExtent({ zoom, left, top }) {
@@ -476,35 +510,23 @@ export default class ZoomableSvg extends Component {
     this.setState(constrain ? this.constrainExtent(nextState) : nextState);
   }
 
-  onWheel = (e) => {
-    e.preventDefault();
-    const { clientX, clientY, deltaY } = e;
-    const { wheelZoom = 1.2 } = this.props;
-    const zoomAmount = deltaY > 0 ? wheelZoom : 1 / wheelZoom;
-    this.zoomBy(zoomAmount, clientX, clientY);
-  };
-
-  reset = (zoom = 1, left = 0, top = 0) => {
-    const nextState = {
-      zoom,
-      left,
-      top,
-    };
-
-    this.setState(this.props.constrain ? this.constrainExtent(nextState) : nextState);
-  };
-
   render() {
     const { svgRoot: Child, childProps, style } = this.props;
-    return (
-      <View
-        {...this._panResponder.panHandlers}
-        onMouseUp={this.onMouseUp}
-        onWheel={this.onWheel}
-        style={style}
-      >
-        <Child transform={getZoomTransform(this.state)} {...childProps} />
-      </View>
+    return React.createElement(
+      View,
+      {
+        ...this._panResponder.panHandlers,
+        onMouseUp: this.onMouseUp,
+        onWheel: this.onWheel,
+        style: style,
+      },
+      React.createElement(Child, {
+        transform: getZoomTransform(this.state),
+        ...childProps,
+      }),
     );
   }
 }
+ZoomableSvg.getDerivedStateFromProps = getDerivedStateFromProps;
+ZoomableSvg.default = ZoomableSvg;
+module.exports = ZoomableSvg;
